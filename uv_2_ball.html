@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title>three.js webgl - interactive - voxel painter</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		
+	</head>
+	<body>
+
+		<div id="info">
+			<div>
+				<button id="color-picker" >选择颜色</button>
+			</div>
+
+			<button onclick="saveModels()" style="background: #00ffff">保存</button>
+		</div>
+		
+
+
+		<script src="libs/three.js"></script>
+
+		<script src="libs/Detector.js"></script>
+
+		<script src="libs/OrbitControls.js"></script>
+		<script src="libs/hilbert2D.js"></script>
+
+		<script src="libs/hilbert3D.js"></script>
+
+		<script src="http://libs.baidu.com/jquery/2.0.0/jquery.min.js"></script>
+
+
+
+
+
+		<script>
+
+			if ( ! Detector.webgl ) Detector.addGetWebGLMessage();
+
+			var camera, scene, renderer;
+			var plane, cube;
+			var mouse, raycaster, isShiftDown = false;
+
+			var rollOverMesh, rollOverMaterial;
+			var cubeGeo, cubeMaterial;
+
+			var objects = [];
+			var voxels = []
+			var earth_raduis = 180
+
+			var cubeLen
+			var cubeMap={}
+			var objects=[]
+
+			var points = []
+			var points2d
+
+			var indexIn2d = 0
+
+			var hilbert3DIt = 5
+
+
+			init();
+			render();
+			animate();
+			
+			
+
+			function init() {
+
+				camera = new THREE.PerspectiveCamera( 45, window.innerWidth / window.innerHeight, 1, 10000 );
+				camera.position.set( 500, 800, 1300 );
+				camera.lookAt( new THREE.Vector3() );
+
+				scene = new THREE.Scene();
+				scene.background = new THREE.Color( 0x000000 );
+
+
+				// lights
+
+				var ambientLight = new THREE.AmbientLight( 0x606060 );
+				scene.add( ambientLight );
+
+				var directionalLight = new THREE.DirectionalLight( 0xffffff );
+				directionalLight.position.set( 1, 0.75, 0.5 ).normalize();
+				scene.add( directionalLight );
+
+				renderer = new THREE.WebGLRenderer( { antialias: true } );
+				renderer.setPixelRatio( window.devicePixelRatio );
+				renderer.setSize( window.innerWidth, window.innerHeight );
+				document.body.appendChild( renderer.domElement );
+
+				
+
+				window.addEventListener( 'resize', onWindowResize, false );
+
+				var controls = new THREE.OrbitControls( camera, renderer.domElement);
+				controls.minDistance = 2;
+				controls.maxDistance = 5000;
+				controls.maxPolarAngle = Math.PI;
+
+
+				
+				//create earth
+				
+				//alert(objects.length)
+				render();
+			}
+
+			
+
+			function onWindowResize() {
+
+				camera.aspect = window.innerWidth / window.innerHeight;
+				camera.updateProjectionMatrix();
+
+				renderer.setSize( window.innerWidth, window.innerHeight );
+
+			}
+
+			function onDocumentMouseMove( event ) {
+
+				event.preventDefault();
+
+				mouse.set( ( event.clientX / window.innerWidth ) * 2 - 1, - ( event.clientY / window.innerHeight ) * 2 + 1 );
+
+				raycaster.setFromCamera( mouse, camera );
+
+				var intersects = raycaster.intersectObjects( objects );
+
+				if ( intersects.length > 0 ) {
+
+					var intersect = intersects[ 0 ];
+
+
+					rollOverMesh.position.copy( intersect.object.position ).add( intersect.face.normal.multiplyScalar(cubeLen) );
+					//rollOverMesh.position.divideScalar( 50 ).floor().multiplyScalar( 50 ).addScalar( 25 );
+
+				}
+
+				render();
+
+			}
+
+			
+
+			
+
+			function render() {
+
+				renderer.render( scene, camera );
+
+			}
+
+
+		
+		
+			function animate() {
+				render();
+				requestAnimationFrame( animate );
+			}
+
+
+		
+			var cubeLen = 2
+			var earth_raduis = 180
+
+			imgTodata("/textures/earth/earth.jpg",earth_raduis,1,0xff0000,"test",function(globes){
+				//console.log(globes)
+
+
+			})
+
+
+			function imgTodata(src, r, d, pcolor, name, imgCallBack) {
+			    var imgData = [];
+			    var image = new Image;
+			    image.src = src;
+
+				var hilbertPoints = hilbert3D( new THREE.Vector3( 0, 0, 0 ), earth_raduis, 5, 0, 1, 2, 3, 4, 5, 6, 7 )
+				cubeLen = (earth_raduis*2)/Math.pow(hilbertPoints.length,1/3)
+
+				// alert("start:"+hilbertPoints.length)
+
+				cubeGeo = new THREE.BoxBufferGeometry( cubeLen, cubeLen, cubeLen );
+
+
+				for(var i=0;i<hilbertPoints.length;i++){
+					var point = hilbertPoints[i]
+					var dis = Math.sqrt(
+						Math.pow(point.x,2)+
+						Math.pow(point.y,2)+
+						Math.pow(point.z,2))
+					if(dis>earth_raduis*9/10&& dis<earth_raduis*11/10){
+						points.push(point)
+
+					}
+				}
+
+				
+
+
+			    image.onload = function () {
+
+
+			        var canvas = document.createElement("canvas");
+			        canvas.width = image.width;
+			        canvas.height = image.height;
+			        imgData.width = image.width;
+			        imgData.height = image.height;
+			        var context = canvas.getContext("2d");
+			        context.drawImage(image, 0, 0, image.width, image.height);
+			        var data = context.getImageData(0, 0, canvas.width, canvas.height);
+			        var dLength = data.data.length;
+			        var sampleCount = 2
+
+			        for (var i = 0; i < dLength; i += 4) {
+			            var x = (i / 4) % canvas.width;
+			            var y = (i / 4 - x) / canvas.width;
+
+			            if (sampleCount==1||(i / 4 % sampleCount == 1 && y % sampleCount == 1)) {
+			                var u = (360 / canvas.width) * x - 180;
+			                var v = (180 / canvas.height) * y - 90;
+			                var xyz = uvToxyz(u, v, r);
+			                imgData.push(xyz);
+
+
+
+			                //var point = new THREE.Vector3(xyz[0],xyz[1],xyz[2])
+			                var point = belongToHilbert(xyz)
+			                if(! point){
+			                	continue
+			                }
+
+			                var color = (data.data[i]<<(4*4))+
+									(data.data[i + 1]<<(2*4))+
+									data.data[i + 2]
+							var shellMaterial= new THREE.MeshPhongMaterial({
+								color:color,//三角面颜色
+								side:THREE.DoubleSide//两面可见
+							});
+
+							var voxel = new THREE.Mesh( cubeGeo, shellMaterial );
+							voxel.position.set(point.x,point.y,point.z)
+							objects.push( voxel );
+							voxels.push(voxel)
+
+							scene.add( voxel );
+			            }
+			        }
+			    	alert("voxels len:"+voxels.length)
+
+			        saveModels()
+			    }
+			}
+
+			// 经纬度 转 xyz  uv to xyz
+			function uvToxyz(u, v, r) {
+			    var wd = (u + 90) * Math.PI / 180,
+			        jd = v * Math.PI / 180,
+			        x = -r * Math.cos(jd) * Math.cos(wd),
+			        y = -r * Math.sin(jd), 
+			        z = r * Math.cos(jd) * Math.sin(wd);
+			    return [x, y, z];
+			}
+
+			function belongToHilbert(pos){
+
+				for(var i=0;i<points.length;i++){
+					var point = points[i]
+					var dis = Math.sqrt(
+						Math.pow(point.x-pos[0],2)+
+						Math.pow(point.y-pos[1],2)+
+						Math.pow(point.z-pos[2],2))
+					if(dis<cubeLen/2){
+						points.splice(i,1)
+						return point
+
+					}
+				}
+				return null
+
+			}
+
+			function saveModels(){
+				var positions = []
+				for(var i=0;i<voxels.length;i++){
+					var voxel = voxels[i]
+					var p = {"x":voxel.position.x,"y":voxel.position.y,"z":voxel.position.z,"color":voxel.material.color}
+					positions.push(p)
+				}
+
+				var json = JSON.stringify(positions)
+
+				$.ajax({
+				  type: 'POST',
+				  url: "saveModel",
+				  data: json,
+				  success: function(data, textStatus, jqXHR){
+				  	alert(data)
+				  },
+				  dataType: "text"
+				});
+			}
+
+
+
+		</script>
+
+	</body>
+</html>
